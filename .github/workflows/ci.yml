@@ -1,20 +1,74 @@
 name: CI
 on: [push, pull_request]
+
 jobs:
   python:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
     steps:
-      - name: Récupérer le code
-        uses: actions/checkout@v4
-      - name: Préparer la base de données
-        run: bash db/setup.sh
-      - name: Installer Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - run: bash db/setup.sh
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Installer les dépendances
-        run: pip install -r requirements.txt
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.txt
         working-directory: python-app
-      - name: Lancer les tests
-        run: pytest -v
+      - run: pytest -v
         working-directory: python-app
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash db/setup.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+        working-directory: node-app
+      - run: npm test
+        working-directory: node-app
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash db/setup.sh
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: mvn -B package
+        working-directory: java-app
+
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash db/setup.sh
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo, pdo_pgsql
+      - run: composer install --no-interaction
+        working-directory: php-app
+      - run: vendor/bin/phpunit tests
+        working-directory: php-app
+
+  build:
+    needs: [python, node, java, php]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Tous les tests sont passés, on construit !"
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Déploiement en cours..."
+      - env:
+          TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: test -n "$TOKEN" && echo "Token présent"
